@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password-Protected Camera and Audio Stream</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
+  <h1 class="text-3xl font-bold mb-6">Live Camera and Audio Stream</h1>
+
+  <!-- Streaming container (hidden by default) -->
+  <div id="streamContainer" class="mb-4 hidden">
+    <h2 class="text-lg font-semibold mb-2">Streaming</h2>
+    <video id="streamVideo" autoplay muted class="w-full max-w-lg rounded-lg shadow-lg"></video>
+  </div>
+
+  <!-- Buttons to control the stream -->
+  <div class="space-x-4 mb-4">
+    <button id="streamButton" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Start Stream</button>
+    <button id="watchButton" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Watch Stream</button>
+  </div>
+
+  <!-- Error message display -->
+  <p id="error" class="text-red-500 mt-4 hidden"></p>
+
+  <!-- Password Modal -->
+  <div id="passwordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+    <div class="bg-white p-6 rounded-lg shadow-lg">
+      <h2 class="text-xl font-bold mb-4">Enter Password</h2>
+      <input id="passwordInput" type="password" class="w-full p-2 border rounded mb-4" placeholder="Password">
+      <div class="flex justify-end space-x-2">
+        <button id="cancelPassword" class="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
+        <button id="submitPassword" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Get DOM elements
+    const streamContainer = document.getElementById('streamContainer');
+    const streamVideo = document.getElementById('streamVideo');
+    const streamButton = document.getElementById('streamButton');
+    const watchButton = document.getElementById('watchButton');
+    const errorElement = document.getElementById('error');
+    const passwordModal = document.getElementById('passwordModal');
+    const passwordInput = document.getElementById('passwordInput');
+    const submitPassword = document.getElementById('submitPassword');
+    const cancelPassword = document.getElementById('cancelPassword');
+
+    const correctPassword = 'narayan#108';
+    let stream = null;
+    let peerConnection = null;
+    let isStreaming = false;
+    let isWatching = false;
+
+    // Function to show password modal
+    function showPasswordModal() {
+      passwordModal.classList.remove('hidden');
+      passwordInput.value = '';
+      passwordInput.focus();
+    }
+
+    // Function to hide password modal
+    function hidePasswordModal() {
+      passwordModal.classList.add('hidden');
+    }
+
+    // Function to update button and container states
+    function updateStates() {
+      // Update stream button
+      if (isStreaming) {
+        streamButton.textContent = 'Stop Stream';
+        streamButton.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        streamButton.classList.add('bg-red-500', 'hover:bg-red-600', 'blur-sm');
+      } else {
+        streamButton.textContent = 'Start Stream';
+        streamButton.classList.remove('bg-red-500', 'hover:bg-red-600', 'blur-sm');
+        streamButton.classList.add('bg-blue-500', 'hover:bg-blue-600');
+      }
+
+      // Update watch button
+      watchButton.textContent = isWatching ? 'Stop Watching' : 'Watch Stream';
+      watchButton.classList.toggle('bg-red-500', isWatching);
+      watchButton.classList.toggle('bg-green-500', !isWatching);
+      watchButton.classList.toggle('hover:bg-red-600', isWatching);
+      watchButton.classList.toggle('hover:bg-green-600', !isWatching);
+
+      // Show/hide stream container
+      streamContainer.classList.toggle('hidden', !isStreaming && !isWatching);
+    }
+
+    // Function to start the stream (streamer)
+    async function startStream() {
+      try {
+        // Request camera and audio access
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+
+        // Attach stream to video (muted for streamer to avoid feedback)
+        streamVideo.srcObject = stream;
+
+        // Initialize WebRTC peer connection
+        peerConnection = new RTCPeerConnection();
+        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+        // Handle ICE candidates (requires signaling server)
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            console.log('ICE Candidate:', event.candidate);
+            // Send candidate to remote peer via signaling server
+          }
+        };
+
+        // Handle incoming streams for watchers (simulated)
+        peerConnection.ontrack = (event) => {
+          if (isWatching) {
+            streamVideo.srcObject = event.streams[0];
+          }
+        };
+
+        // Create and set SDP offer
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        console.log('SDP Offer:', offer);
+        // Send offer to signaling server (not implemented)
+
+        isStreaming = true;
+        updateStates();
+        errorElement.classList.add('hidden');
+      } catch (err) {
+        console.error('Error accessing media devices:', err);
+        errorElement.textContent = `Error: ${err.message}`;
+        errorElement.classList.remove('hidden');
+      }
+    }
+
+    // Function to stop the stream (streamer)
+    function stopStream() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      streamVideo.srcObject = null;
+      isStreaming = false;
+      isWatching = false;
+      updateStates();
+    }
+
+    // Function to watch the stream (watcher)
+    function watchStream() {
+      if (!isStreaming) {
+        errorElement.textContent = 'No stream available to watch';
+        errorElement.classList.remove('hidden');
+        return;
+      }
+      if (!isWatching) {
+        // Simulate watcher stream (in reality, use WebRTC signaling)
+        streamVideo.srcObject = stream; // Reuse broadcaster stream for simulation
+        streamVideo.muted = false; // Allow audio for watcher
+        isWatching = true;
+      } else {
+        streamVideo.srcObject = null;
+        isWatching = false;
+      }
+      updateStates();
+    }
+
+    // Event listeners
+    streamButton.addEventListener('click', () => {
+      if (isStreaming) {
+        stopStream();
+      } else {
+        showPasswordModal();
+      }
+    });
+
+    submitPassword.addEventListener('click', async () => {
+      if (passwordInput.value === correctPassword) {
+        hidePasswordModal();
+        await startStream();
+      } else {
+        errorElement.textContent = 'Incorrect password';
+        errorElement.classList.remove('hidden');
+      }
+    });
+
+    cancelPassword.addEventListener('click', hidePasswordModal);
+
+    watchButton.addEventListener('click', watchStream);
+
+    // Handle Enter key in password input
+    passwordInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        submitPassword.click();
+      }
+    });
+
+    // Stop stream when page is unloaded
+    window.addEventListener('beforeunload', () => {
+      stopStream();
+    });
+
+    // Initial state
+    updateStates();
+  </script>
+</body>
+</html>
