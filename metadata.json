@@ -1,0 +1,8 @@
+{
+  "name": "StreamHub - Live Video Streaming",
+  "description": "A web application to watch and broadcast live video streams. Users can add their own stream after password verification.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

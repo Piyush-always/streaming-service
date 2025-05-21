@@ -1,283 +1,44 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
 
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Stream Hub</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamHub</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { background-color: #1a1a1a; color: #ffffff; font-family: 'Arial', sans-serif; }
-        .stream-grid { display: grid; gap: 1rem; padding: 1rem; }
-        .stream-container { position: relative; background: #2d2d2d; border-radius: 8px; overflow: hidden; }
-        .stream-container.maximized { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000; }
-        .stream-container.maximized video { width: 100%; height: 100%; object-fit: cover; }
-        .controls { position: absolute; bottom: 10px; right: 10px; display: flex; gap: 10px; }
-        .current-streams { border: 2px solid #3b3b3b; border-radius: 8px; padding: 1rem; width: 100%; max-width: 1200px; }
-        .hidden { display: none; }
+      body {
+        font-family: 'Inter', sans-serif; /* A nice sans-serif font */
+      }
+      /* For custom scrollbar styling (optional, but enhances aesthetics) */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #2d3748; /* Tailwind gray-800 */
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #4a5568; /* Tailwind gray-600 */
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #718096; /* Tailwind gray-500 */
+      }
     </style>
-</head>
-<body class="flex flex-col items-center min-h-screen">
-    <h1 class="text-4xl font-bold mt-6 mb-4">Live Stream Hub</h1>
-    <button id="startStream" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg mb-6">Start Stream</button>
-    <div class="current-streams">
-        <h2 class="text-2xl font-semibold mb-4">Current Streams</h2>
-        <div id="noStream" class="text-xl mb-4 text-center">No active streams. <button id="startStreamInline" class="text-blue-400 underline">Start a stream</button></div>
-        <div id="streamGrid" class="stream-grid"></div>
-    </div>
-
-    <script>
-        const streamGrid = document.getElementById('streamGrid');
-        const noStream = document.getElementById('noStream');
-        const startStreamBtn = document.getElementById('startStream');
-        const startStreamInline = document.getElementById('startStreamInline');
-        let streams = [];
-        let userStream = null;
-        let peer = new Peer({
-            host: '0.peerjs.com',
-            secure: true
-        });
-
-        peer.on('open', async (id) => {
-            console.log('My ID:', id);
-            // Save the streamer’s ID to the notebook
-            try {
-                await fetch('https://your-free-backend.onrender.com/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id })
-                });
-            } catch (err) {
-                console.log('Couldn’t save ID:', err);
-            }
-        });
-
-        function adjustGrid() {
-            const count = streams.length;
-            streamGrid.style.gridTemplateColumns = count <= 2 ? `repeat(${count}, 1fr)` : `repeat(${Math.ceil(Math.sqrt(count))}, 1fr)`;
-            noStream.classList.toggle('hidden', count > 0);
-        }
-
-        async function startStream() {
-            const password = prompt('Enter password:');
-            if (password !== '0000') {
-                alert('Wrong password!');
-                return;
-            }
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                video.autoplay = true;
-                video.muted = false;
-
-                const container = document.createElement('div');
-                container.className = 'stream-container';
-                container.appendChild(video);
-
-                const controls = document.createElement('div');
-                controls.className = 'controls';
-                const maximizeBtn = document.createElement('button');
-                maximizeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
-                maximizeBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
-                const muteBtn = document.createElement('button');
-                muteBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
-                muteBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
-                const closeBtn = document.createElement('button');
-                closeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
-                closeBtn.className = 'bg-red-600 hover:bg-red-700 text-white p-2 rounded';
-                controls.append(maximizeBtn, muteBtn, closeBtn);
-                container.appendChild(controls);
-
-                maximizeBtn.addEventListener('click', () => {
-                    container.classList.toggle('maximized');
-                    maximizeBtn.innerHTML = container.classList.contains('maximized') 
-                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H4m0 0v4m0-4l5 5m-5 7v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5m5-7l-5 5"/></svg>'
-                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
-                });
-
-                muteBtn.addEventListener('click', () => {
-                    video.muted = !video.muted;
-                    muteBtn.innerHTML = video.muted 
-                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM15 9l-6 6m0-6l6 6"/></svg>'
-                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
-                });
-
-                closeBtn.addEventListener('click', () => {
-                    stream.getTracks().forEach(track => track.stop());
-                    container.remove();
-                    streams = streams.filter(s => s.stream !== stream);
-                    userStream = null;
-                    startStreamBtn.classList.remove('hidden');
-                    adjustGrid();
-                });
-
-                streams.push({ container, stream });
-                userStream = stream;
-                streamGrid.appendChild(container);
-                startStreamBtn.classList.add('hidden');
-                adjustGrid();
-            } catch (err) {
-                alert('Can’t get camera or mic: ' + err.message);
-            }
-        }
-
-        peer.on('call', (call) => {
-            call.answer();
-            call.on('stream', (remoteStream) => {
-                const video = document.createElement('video');
-                video.srcObject = remoteStream;
-                video.autoplay = true;
-                video.muted = false;
-
-                const container = document.createElement('div');
-                container.className = 'stream-container';
-                container.appendChild(video);
-
-                const controls = document.createElement('div');
-                controls.className = 'controls';
-                const maximizeBtn = document.createElement('button');
-                maximizeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
-                maximizeBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
-                const muteBtn = document.createElement('button');
-                muteBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
-                muteBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
-                controls.append(maximizeBtn, muteBtn);
-                container.appendChild(controls);
-
-                maximizeBtn.addEventListener('click', () => {
-                    container.classList.toggle('maximized');
-                    maximizeBtn.innerHTML = container.classList.contains('maximized') 
-                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H4m0 0v4m0-4l5 5m-5 7v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5m5-7l-5 5"/></svg>'
-                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
-                });
-
-                muteBtn.addEventListener('click', () => {
-                    video.muted = !video.muted;
-                    muteBtn.innerHTML = video.muted 
-                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM15 9l-6 6m0-6l6 6"/></svg>'
-                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
-                });
-
-                streams.push({ container, stream: remoteStream });
-                streamGrid.appendChild(container);
-                adjustGrid();
-            });
-        });
-
-        // Load streamers from the notebook
-        async function loadStreams() {
-            try {
-                const response = await fetch('https://your-free-backend.onrender.com/streamers');
-                const streamerIds = await response.json();
-                streamerIds.forEach(id => {
-                    const call = peer.call(id, null);
-                    call.on('stream', (remoteStream) => {
-                        const video = document.createElement('video');
-                        video.srcObject = remoteStream;
-                        video.autoplay = true;
-                        video.muted = false;
-
-                        const container = document.createElement('div');
-                        container.className = 'stream-container';
-                        container.appendChild(video);
-
-                        const controls = document.createElement('div');
-                        controls.className = 'controls';
-                        const maximizeBtn = document.createElement('button');
-                        maximizeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
-                        maximizeBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
-                        const muteBtn = document.createElement('button');
-                        muteBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
-                        muteBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
-                        controls.append(maximizeBtn, muteBtn);
-                        container.appendChild(controls);
-
-                        maximizeBtn.addEventListener('click', () => {
-                            container.classList.toggle('maximized');
-                            maximizeBtn.innerHTML = container.classList.contains('maximized') 
-                                ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H4m0 0v4m0-4l5 5m-5 7v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5m5-7l-5 5"/></svg>'
-                                : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
-                        });
-
-                        muteBtn.addEventListener('click', () => {
-                            video.muted = !video.muted;
-                            muteBtn.innerHTML = video.muted 
-                                ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15Hsubtract
-
----
-
-### Step 2: Set Up a Free Backend for Streamer IDs
-To let viewers automatically find streamers, we need a simple backend to store their PeerJS IDs. We’ll use **Render**, a free hosting service that’s easy to set up.
-
-1. **Sign Up for Render**:
-   - Go to [render.com](https://render.com) and create a free account.
-   - Create a new “Web Service” in Render’s dashboard.
-
-2. **Create the Backend Code**:
-   - Create a file called `backend.js`:
-
-<xaiArtifact artifact_id="f28548c7-99b5-475f-89b3-543964bd290e" artifact_version_id="671804f0-2e4f-4ea2-9301-f747d8443f01" title="backend.js" contentType="text/javascript">
-const express = require('express');
-const app = express();
-const port = process.env.PORT || 3000;
-
-app.use(express.json());
-
-let streamers = [];
-
-app.post('/register', (req, res) => {
-  const { id } = req.body;
-  if (!streamers.includes(id)) {
-    streamers.push(id);
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.0.0"
   }
-  res.send('OK');
-});
-
-app.get('/streamers', (req, res) => {
-  res.json(streamers);
-});
-
-app.listen(port, () => {
-  console.log(`Backend running on port ${port}`);
-});
+}
+</script>
+</head>
+  <body class="bg-gray-900 text-white antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html><link rel="stylesheet" href="index.css">
+<script src="index.tsx" type="module"></script>
