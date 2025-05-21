@@ -1,215 +1,283 @@
-<!DOCTYPE html>
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Password-Protected Camera and Audio Stream</title>
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Stream Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { background-color: #1a1a1a; color: #ffffff; font-family: 'Arial', sans-serif; }
+        .stream-grid { display: grid; gap: 1rem; padding: 1rem; }
+        .stream-container { position: relative; background: #2d2d2d; border-radius: 8px; overflow: hidden; }
+        .stream-container.maximized { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000; }
+        .stream-container.maximized video { width: 100%; height: 100%; object-fit: cover; }
+        .controls { position: absolute; bottom: 10px; right: 10px; display: flex; gap: 10px; }
+        .current-streams { border: 2px solid #3b3b3b; border-radius: 8px; padding: 1rem; width: 100%; max-width: 1200px; }
+        .hidden { display: none; }
+    </style>
 </head>
-<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
-  <h1 class="text-3xl font-bold mb-6">Live Camera and Audio Stream</h1>
-
-  <!-- Streaming container (hidden by default) -->
-  <div id="streamContainer" class="mb-4 hidden">
-    <h2 class="text-lg font-semibold mb-2">Streaming</h2>
-    <video id="streamVideo" autoplay muted class="w-full max-w-lg rounded-lg shadow-lg"></video>
-  </div>
-
-  <!-- Buttons to control the stream -->
-  <div class="space-x-4 mb-4">
-    <button id="streamButton" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Start Stream</button>
-    <button id="watchButton" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Watch Stream</button>
-  </div>
-
-  <!-- Error message display -->
-  <p id="error" class="text-red-500 mt-4 hidden"></p>
-
-  <!-- Password Modal -->
-  <div id="passwordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded-lg shadow-lg">
-      <h2 class="text-xl font-bold mb-4">Enter Password</h2>
-      <input id="passwordInput" type="password" class="w-full p-2 border rounded mb-4" placeholder="Password">
-      <div class="flex justify-end space-x-2">
-        <button id="cancelPassword" class="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
-        <button id="submitPassword" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Submit</button>
-      </div>
+<body class="flex flex-col items-center min-h-screen">
+    <h1 class="text-4xl font-bold mt-6 mb-4">Live Stream Hub</h1>
+    <button id="startStream" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg mb-6">Start Stream</button>
+    <div class="current-streams">
+        <h2 class="text-2xl font-semibold mb-4">Current Streams</h2>
+        <div id="noStream" class="text-xl mb-4 text-center">No active streams. <button id="startStreamInline" class="text-blue-400 underline">Start a stream</button></div>
+        <div id="streamGrid" class="stream-grid"></div>
     </div>
-  </div>
 
-  <script>
-    // Get DOM elements
-    const streamContainer = document.getElementById('streamContainer');
-    const streamVideo = document.getElementById('streamVideo');
-    const streamButton = document.getElementById('streamButton');
-    const watchButton = document.getElementById('watchButton');
-    const errorElement = document.getElementById('error');
-    const passwordModal = document.getElementById('passwordModal');
-    const passwordInput = document.getElementById('passwordInput');
-    const submitPassword = document.getElementById('submitPassword');
-    const cancelPassword = document.getElementById('cancelPassword');
-
-    const correctPassword = 'narayan#108';
-    let stream = null;
-    let peerConnection = null;
-    let isStreaming = false;
-    let isWatching = false;
-
-    // Function to show password modal
-    function showPasswordModal() {
-      passwordModal.classList.remove('hidden');
-      passwordInput.value = '';
-      passwordInput.focus();
-    }
-
-    // Function to hide password modal
-    function hidePasswordModal() {
-      passwordModal.classList.add('hidden');
-    }
-
-    // Function to update button and container states
-    function updateStates() {
-      // Update stream button
-      if (isStreaming) {
-        streamButton.textContent = 'Stop Stream';
-        streamButton.classList.remove('bg-blue-500', 'hover:bg-blue-600');
-        streamButton.classList.add('bg-red-500', 'hover:bg-red-600', 'blur-sm');
-      } else {
-        streamButton.textContent = 'Start Stream';
-        streamButton.classList.remove('bg-red-500', 'hover:bg-red-600', 'blur-sm');
-        streamButton.classList.add('bg-blue-500', 'hover:bg-blue-600');
-      }
-
-      // Update watch button
-      watchButton.textContent = isWatching ? 'Stop Watching' : 'Watch Stream';
-      watchButton.classList.toggle('bg-red-500', isWatching);
-      watchButton.classList.toggle('bg-green-500', !isWatching);
-      watchButton.classList.toggle('hover:bg-red-600', isWatching);
-      watchButton.classList.toggle('hover:bg-green-600', !isWatching);
-
-      // Show/hide stream container
-      streamContainer.classList.toggle('hidden', !isStreaming && !isWatching);
-    }
-
-    // Function to start the stream (streamer)
-    async function startStream() {
-      try {
-        // Request camera and audio access
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
+    <script>
+        const streamGrid = document.getElementById('streamGrid');
+        const noStream = document.getElementById('noStream');
+        const startStreamBtn = document.getElementById('startStream');
+        const startStreamInline = document.getElementById('startStreamInline');
+        let streams = [];
+        let userStream = null;
+        let peer = new Peer({
+            host: '0.peerjs.com',
+            secure: true
         });
 
-        // Attach stream to video (muted for streamer to avoid feedback)
-        streamVideo.srcObject = stream;
+        peer.on('open', async (id) => {
+            console.log('My ID:', id);
+            // Save the streamer’s ID to the notebook
+            try {
+                await fetch('https://your-free-backend.onrender.com/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+            } catch (err) {
+                console.log('Couldn’t save ID:', err);
+            }
+        });
 
-        // Initialize WebRTC peer connection
-        peerConnection = new RTCPeerConnection();
-        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+        function adjustGrid() {
+            const count = streams.length;
+            streamGrid.style.gridTemplateColumns = count <= 2 ? `repeat(${count}, 1fr)` : `repeat(${Math.ceil(Math.sqrt(count))}, 1fr)`;
+            noStream.classList.toggle('hidden', count > 0);
+        }
 
-        // Handle ICE candidates (requires signaling server)
-        peerConnection.onicecandidate = (event) => {
-          if (event.candidate) {
-            console.log('ICE Candidate:', event.candidate);
-            // Send candidate to remote peer via signaling server
-          }
-        };
+        async function startStream() {
+            const password = prompt('Enter password:');
+            if (password !== '0000') {
+                alert('Wrong password!');
+                return;
+            }
 
-        // Handle incoming streams for watchers (simulated)
-        peerConnection.ontrack = (event) => {
-          if (isWatching) {
-            streamVideo.srcObject = event.streams[0];
-          }
-        };
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.autoplay = true;
+                video.muted = false;
 
-        // Create and set SDP offer
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        console.log('SDP Offer:', offer);
-        // Send offer to signaling server (not implemented)
+                const container = document.createElement('div');
+                container.className = 'stream-container';
+                container.appendChild(video);
 
-        isStreaming = true;
-        updateStates();
-        errorElement.classList.add('hidden');
-      } catch (err) {
-        console.error('Error accessing media devices:', err);
-        errorElement.textContent = `Error: ${err.message}`;
-        errorElement.classList.remove('hidden');
-      }
-    }
+                const controls = document.createElement('div');
+                controls.className = 'controls';
+                const maximizeBtn = document.createElement('button');
+                maximizeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
+                maximizeBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
+                const muteBtn = document.createElement('button');
+                muteBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
+                muteBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
+                const closeBtn = document.createElement('button');
+                closeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+                closeBtn.className = 'bg-red-600 hover:bg-red-700 text-white p-2 rounded';
+                controls.append(maximizeBtn, muteBtn, closeBtn);
+                container.appendChild(controls);
 
-    // Function to stop the stream (streamer)
-    function stopStream() {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        stream = null;
-      }
-      if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-      }
-      streamVideo.srcObject = null;
-      isStreaming = false;
-      isWatching = false;
-      updateStates();
-    }
+                maximizeBtn.addEventListener('click', () => {
+                    container.classList.toggle('maximized');
+                    maximizeBtn.innerHTML = container.classList.contains('maximized') 
+                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H4m0 0v4m0-4l5 5m-5 7v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5m5-7l-5 5"/></svg>'
+                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
+                });
 
-    // Function to watch the stream (watcher)
-    function watchStream() {
-      if (!isStreaming) {
-        errorElement.textContent = 'No stream available to watch';
-        errorElement.classList.remove('hidden');
-        return;
-      }
-      if (!isWatching) {
-        // Simulate watcher stream (in reality, use WebRTC signaling)
-        streamVideo.srcObject = stream; // Reuse broadcaster stream for simulation
-        streamVideo.muted = false; // Allow audio for watcher
-        isWatching = true;
-      } else {
-        streamVideo.srcObject = null;
-        isWatching = false;
-      }
-      updateStates();
-    }
+                muteBtn.addEventListener('click', () => {
+                    video.muted = !video.muted;
+                    muteBtn.innerHTML = video.muted 
+                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM15 9l-6 6m0-6l6 6"/></svg>'
+                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
+                });
 
-    // Event listeners
-    streamButton.addEventListener('click', () => {
-      if (isStreaming) {
-        stopStream();
-      } else {
-        showPasswordModal();
-      }
-    });
+                closeBtn.addEventListener('click', () => {
+                    stream.getTracks().forEach(track => track.stop());
+                    container.remove();
+                    streams = streams.filter(s => s.stream !== stream);
+                    userStream = null;
+                    startStreamBtn.classList.remove('hidden');
+                    adjustGrid();
+                });
 
-    submitPassword.addEventListener('click', async () => {
-      if (passwordInput.value === correctPassword) {
-        hidePasswordModal();
-        await startStream();
-      } else {
-        errorElement.textContent = 'Incorrect password';
-        errorElement.classList.remove('hidden');
-      }
-    });
+                streams.push({ container, stream });
+                userStream = stream;
+                streamGrid.appendChild(container);
+                startStreamBtn.classList.add('hidden');
+                adjustGrid();
+            } catch (err) {
+                alert('Can’t get camera or mic: ' + err.message);
+            }
+        }
 
-    cancelPassword.addEventListener('click', hidePasswordModal);
+        peer.on('call', (call) => {
+            call.answer();
+            call.on('stream', (remoteStream) => {
+                const video = document.createElement('video');
+                video.srcObject = remoteStream;
+                video.autoplay = true;
+                video.muted = false;
 
-    watchButton.addEventListener('click', watchStream);
+                const container = document.createElement('div');
+                container.className = 'stream-container';
+                container.appendChild(video);
 
-    // Handle Enter key in password input
-    passwordInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        submitPassword.click();
-      }
-    });
+                const controls = document.createElement('div');
+                controls.className = 'controls';
+                const maximizeBtn = document.createElement('button');
+                maximizeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
+                maximizeBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
+                const muteBtn = document.createElement('button');
+                muteBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
+                muteBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
+                controls.append(maximizeBtn, muteBtn);
+                container.appendChild(controls);
 
-    // Stop stream when page is unloaded
-    window.addEventListener('beforeunload', () => {
-      stopStream();
-    });
+                maximizeBtn.addEventListener('click', () => {
+                    container.classList.toggle('maximized');
+                    maximizeBtn.innerHTML = container.classList.contains('maximized') 
+                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H4m0 0v4m0-4l5 5m-5 7v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5m5-7l-5 5"/></svg>'
+                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
+                });
 
-    // Initial state
-    updateStates();
-  </script>
-</body>
-</html>
+                muteBtn.addEventListener('click', () => {
+                    video.muted = !video.muted;
+                    muteBtn.innerHTML = video.muted 
+                        ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM15 9l-6 6m0-6l6 6"/></svg>'
+                        : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
+                });
+
+                streams.push({ container, stream: remoteStream });
+                streamGrid.appendChild(container);
+                adjustGrid();
+            });
+        });
+
+        // Load streamers from the notebook
+        async function loadStreams() {
+            try {
+                const response = await fetch('https://your-free-backend.onrender.com/streamers');
+                const streamerIds = await response.json();
+                streamerIds.forEach(id => {
+                    const call = peer.call(id, null);
+                    call.on('stream', (remoteStream) => {
+                        const video = document.createElement('video');
+                        video.srcObject = remoteStream;
+                        video.autoplay = true;
+                        video.muted = false;
+
+                        const container = document.createElement('div');
+                        container.className = 'stream-container';
+                        container.appendChild(video);
+
+                        const controls = document.createElement('div');
+                        controls.className = 'controls';
+                        const maximizeBtn = document.createElement('button');
+                        maximizeBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
+                        maximizeBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
+                        const muteBtn = document.createElement('button');
+                        muteBtn.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4-4A1 1 0 0111 6v12a1 1 0 01-1.414.586l-4-4zM16 12h2m-2 0h-2m2 0v3m0-3v-3"/></svg>';
+                        muteBtn.className = 'bg-gray-800 hover:bg-gray-700 text-white p-2 rounded';
+                        controls.append(maximizeBtn, muteBtn);
+                        container.appendChild(controls);
+
+                        maximizeBtn.addEventListener('click', () => {
+                            container.classList.toggle('maximized');
+                            maximizeBtn.innerHTML = container.classList.contains('maximized') 
+                                ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H4m0 0v4m0-4l5 5m-5 7v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5m5-7l-5 5"/></svg>'
+                                : '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>';
+                        });
+
+                        muteBtn.addEventListener('click', () => {
+                            video.muted = !video.muted;
+                            muteBtn.innerHTML = video.muted 
+                                ? '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15Hsubtract
+
+---
+
+### Step 2: Set Up a Free Backend for Streamer IDs
+To let viewers automatically find streamers, we need a simple backend to store their PeerJS IDs. We’ll use **Render**, a free hosting service that’s easy to set up.
+
+1. **Sign Up for Render**:
+   - Go to [render.com](https://render.com) and create a free account.
+   - Create a new “Web Service” in Render’s dashboard.
+
+2. **Create the Backend Code**:
+   - Create a file called `backend.js`:
+
+<xaiArtifact artifact_id="f28548c7-99b5-475f-89b3-543964bd290e" artifact_version_id="671804f0-2e4f-4ea2-9301-f747d8443f01" title="backend.js" contentType="text/javascript">
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.use(express.json());
+
+let streamers = [];
+
+app.post('/register', (req, res) => {
+  const { id } = req.body;
+  if (!streamers.includes(id)) {
+    streamers.push(id);
+  }
+  res.send('OK');
+});
+
+app.get('/streamers', (req, res) => {
+  res.json(streamers);
+});
+
+app.listen(port, () => {
+  console.log(`Backend running on port ${port}`);
+});
