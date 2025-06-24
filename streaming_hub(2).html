@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamHub - Live Streaming Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #000;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            background-color: #111;
+            border-bottom: 2px solid #333;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .company-name {
+            font-size: 32px;
+            font-weight: bold;
+            color: #fff;
+            text-align: center;
+            flex-grow: 1;
+        }
+
+        .auth-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info {
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .login-btn, .logout-btn {
+            background-color: #fff;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .login-btn:hover, .logout-btn:hover {
+            background-color: #ddd;
+            transform: translateY(-2px);
+        }
+
+        .logout-btn {
+            background-color: #f44336;
+            color: #fff;
+        }
+
+        .logout-btn:hover {
+            background-color: #d32f2f;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .streams-container {
+            background-color: #111;
+            padding: 30px;
+            border-radius: 20px;
+            border: 2px solid #333;
+            margin-bottom: 30px;
+        }
+
+        .streams-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #fff;
+        }
+
+        .streams-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stream-item {
+            background-color: #222;
+            border-radius: 15px;
+            padding: 15px;
+            border: 1px solid #444;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .stream-item:hover {
+            border-color: #666;
+            transform: translateY(-3px);
+        }
+
+        .stream-preview {
+            width: 100%;
+            height: 160px;
+            background-color: #000;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            object-fit: cover;
+        }
+
+        .stream-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .stream-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .stream-time {
+            font-size: 11px;
+            color: #888;
+            text-align: right;
+        }
+
+        .stream-status {
+            color: #4CAF50;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .live-indicator {
+            width: 8px;
+            height: 8px;
+            background-color: #4CAF50;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .no-streams {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+            font-size: 18px;
+        }
+
+        .start-stream-section {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .start-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .start-btn:hover {
+            background-color: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .start-btn:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+
+        .stop-btn {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+        }
+
+        .modal-content {
+            background-color: #222;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        .modal input {
+            width: 100%;
+            padding: 15px;
+            margin: 15px 0;
+            border: 1px solid #444;
+            border-radius: 8px;
+            background-color: #333;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .modal-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+
+        .modal-btn.cancel {
+            background-color: #666;
+        }
+
+        /* Full screen video modal */
+        .video-modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.95);
+        }
+
+        .video-modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 800px;
+        }
+
+        .fullscreen-video {
+            width: 100%;
+            max-height: 70vh;
+            border-radius: 15px;
+            object-fit: contain;
+        }
+
+        .video-controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .close-video {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .stream-metadata {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            text-align: left;
+        }
+
+        .not-logged-in {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+
+        .online-count {
+            background-color: #333;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">🎥</div>
+        <div class="company-name">StreamHub</div>
+        <div class="auth-section">
+            <div class="online-count" id="onlineCount">👁️ 0 viewers</div>
+            <div class="user-info" id="userInfo">
+                <span id="username">User</span>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+            <button class="login-btn" id="loginBtn" onclick="showLoginModal()">Login</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="streams-container">
+            <h2 class="streams-title">Live Streams</h2>
+            <div class="streams-grid" id="streamsGrid">
+                <div class="no-streams" id="noStreams">
+                    No ongoing streams at the moment
+                </div>
+            </div>
+            <div class="start-stream-section" id="streamControls" style="display: none;">
+                <button class="start-btn" id="startStreamBtn" onclick="startCameraStream()">
+                    Start Camera Stream
+                </button>
+                <button class="stop-btn" id="stopStreamBtn" onclick="stopStream()" style="display: none;">
+                    Stop Stream
+                </button>
+            </div>
+            <div class="not-logged-in" id="notLoggedIn">
+                Please login to start streaming
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <h3>Login to StreamHub</h3>
+            <input type="text" id="usernameInput" placeholder="Enter your username">
+            <input type="password" id="passwordInput" placeholder="Enter password">
+            <div>
+                <button class="modal-btn" onclick="login()">Login</button>
+                <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Modal for full screen viewing -->
+    <div id="videoModal" class="video-modal">
+        <div class="video-modal-content">
+            <video id="fullscreenVideo" class="fullscreen-video" controls autoplay></video>
+            <div class="stream-metadata" id="streamMetadata">
+                <div><strong id="modalStreamTitle">Stream Title</strong></div>
+                <div id="modalStreamTime">Started: --</div>
+                <div id="modalStreamViews">👁️ -- viewers</div>
+            </div>
+            <div class="video-controls">
+                <button class="close-video" onclick="closeVideoModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // TODO: Add your Firebase configuration here
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js';
+        import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
+
+        // 🔥 REPLACE WITH YOUR FIREBASE CONFIG
+        const firebaseConfig = {
+        apiKey: "AIzaSyB-7GRVZOkUZ-US8hPwIDXCyfVrleqXlFE",
+        authDomain: "streaming-ed7d5.firebaseapp.com",
+        projectId: "streaming-ed7d5",
+        storageBucket: "streaming-ed7d5.firebasestorage.app",
+        messagingSenderId: "232026303377",
+        appId: "1:232026303377:web:54b4ca610fbb64213e4830"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Make Firebase available globally
+        window.firebaseAuth = auth;
+        window.firebaseDB = db;
+        window.firebaseUtils = {
+            collection,
+            addDoc,
+            deleteDoc,
+            doc,
+            onSnapshot,
+            updateDoc,
+            serverTimestamp,
+            signInWithEmailAndPassword,
+            signOut,
+            onAuthStateChanged
+        };
+    </script>
+
+    <script>
+        // Global state management for multi-user streaming
+        let currentUser = null;
+        let streams = new Map(); // Using Map for better performance
+        let currentStream = null;
+        let mediaStream = null;
+        let viewerCount = 0;
+        let streamDatabase = new Map(); // Fallback for offline mode
+
+        function showLoginModal() {
+            document.getElementById('loginModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('loginModal').style.display = 'none';
+            document.getElementById('usernameInput').value = '';
+            document.getElementById('passwordInput').value = '';
+        }
+
+        async function login() {
+            const email = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+
+            try {
+                // Use Firebase Authentication
+                const userCredential = await window.firebaseUtils.signInWithEmailAndPassword(window.firebaseAuth, email, password);
+                currentUser = {
+                    uid: userCredential.user.uid,
+                    email: userCredential.user.email,
+                    displayName: userCredential.user.displayName || email.split('@')[0]
+                };
+                
+                updateAuthUI();
+                closeModal();
+                updateViewerCount();
+                
+                // Start listening to streams collection
+                listenToStreams();
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Login failed: ' + error.message);
+                document.getElementById('passwordInput').value = '';
+            }
+        }
+
+        async function logout() {
+            if (currentStream) {
+                await stopStream();
+            }
+            
+            try {
+                await window.firebaseUtils.signOut(window.firebaseAuth);
+                currentUser = null;
+                updateAuthUI();
+                updateViewerCount();
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        }
+
+        function updateAuthUI() {
+            const loginBtn = document.getElementById('loginBtn');
+            const userInfo = document.getElementById('userInfo');
+            const streamControls = document.getElementById('streamControls');
+            const notLoggedIn = document.getElementById('notLoggedIn');
+
+            if (currentUser) {
+                loginBtn.style.display = 'none';
+                userInfo.style.display = 'flex';
+                streamControls.style.display = 'block';
+                notLoggedIn.style.display = 'none';
+                document.getElementById('username').textContent = currentUser.displayName || currentUser.email;
+            } else {
+                loginBtn.style.display = 'block';
+                userInfo.style.display = 'none';
+                streamControls.style.display = 'none';
+                notLoggedIn.style.display = 'block';
+            }
+        }
+
+        async function startCameraStream() {
+            if (!currentUser) {
+                alert('Please login first!');
+                return;
+            }
+
+            try {
+                // Request camera and microphone access
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 1280, height: 720 }, 
+                    audio: true 
+                });
+
+                const streamId = 'stream_' + Date.now();
+                const startTime = new Date();
+                
+                const streamData = {
+                    id: streamId,
+                    title: `${currentUser.displayName || currentUser.email}'s Stream`,
+                    streamer: currentUser.displayName || currentUser.email,
+                    streamerUid: currentUser.uid,
+                    mediaStream: mediaStream,
+                    startTime: startTime,
+                    viewers: 1
+                };
+
+                streams.set(streamId, streamData);
+                currentStream = streamData;
+                
+                // Sync to Firestore
+                await syncToDatabase(streamData);
+                
+                updateStreamsDisplay();
+                
+                // Update UI
+                document.getElementById('startStreamBtn').style.display = 'none';
+                document.getElementById('stopStreamBtn').style.display = 'inline-block';
+
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                alert('Could not access camera. Please ensure you have granted camera permissions.');
+            }
+        }
+
+        async function stopStream() {
+            if (currentStream && mediaStream) {
+                // Stop all tracks
+                mediaStream.getTracks().forEach(track => track.stop());
+                
+                // Remove from Firestore and local streams
+                await removeFromDatabase(currentStream.id, currentStream.firestoreId);
+                streams.delete(currentStream.id);
+                
+                currentStream = null;
+                mediaStream = null;
+                
+                updateStreamsDisplay();
+                
+                // Update UI
+                document.getElementById('startStreamBtn').style.display = 'inline-block';
+                document.getElementById('stopStreamBtn').style.display = 'none';
+            }
+        }
+
+        function openStreamModal(streamId) {
+            const stream = streams.get(streamId);
+            if (!stream) return;
+
+            const modal = document.getElementById('videoModal');
+            const video = document.getElementById('fullscreenVideo');
+            
+            video.srcObject = stream.mediaStream;
+            
+            // Update metadata
+            document.getElementById('modalStreamTitle').textContent = stream.title;
+            document.getElementById('modalStreamTime').textContent = 
+                `Started: ${formatTime(stream.startTime)}`;
+            document.getElementById('modalStreamViews').textContent = 
+                `👁️ ${stream.viewers || 1} viewers`;
+            
+            modal.style.display = 'block';
+            
+            // Simulate viewer increase and update Firestore
+            stream.viewers = (stream.viewers || 1) + 1;
+            updateViewerCount(streamId);
+            updateStreamsDisplay();
+        }
+
+        function closeVideoModal() {
+            const modal = document.getElementById('videoModal');
+            const video = document.getElementById('fullscreenVideo');
+            
+            video.srcObject = null;
+            modal.style.display = 'none';
+        }
+
+        function updateStreamsDisplay() {
+            const streamsGrid = document.getElementById('streamsGrid');
+
+            if (streams.size === 0) {
+                streamsGrid.innerHTML = '<div class="no-streams">No ongoing streams at the moment</div>';
+            } else {
+                streamsGrid.innerHTML = '';
+                
+                streams.forEach((stream, streamId) => {
+                    const streamElement = document.createElement('div');
+                    streamElement.className = 'stream-item';
+                    streamElement.onclick = () => openStreamModal(streamId);
+                    
+                    const video = document.createElement('video');
+                    video.className = 'stream-preview';
+                    video.srcObject = stream.mediaStream;
+                    video.autoplay = true;
+                    video.muted = true;
+                    video.playsInline = true;
+                    
+                    const timeAgo = getTimeAgo(stream.startTime);
+                    const startedTime = formatTime(stream.startTime);
+                    
+                    streamElement.innerHTML = `
+                        <div class="stream-info">
+                            <div>
+                                <div class="stream-title">${stream.title}</div>
+                                <div class="stream-status">
+                                    <div class="live-indicator"></div>
+                                    Live
+                                </div>
+                            </div>
+                            <div class="stream-time">
+                                Started:<br>${startedTime}<br>
+                                <small>(${timeAgo})</small>
+                            </div>
+                        </div>
+                    `;
+                    
+                    streamElement.insertBefore(video, streamElement.firstChild);
+                    streamsGrid.appendChild(streamElement);
+                });
+            }
+            
+            updateViewerCount();
+        }
+
+        function updateViewerCount() {
+            // Update UI counter
+            const baseViewers = streams.size > 0 ? Array.from(streams.values()).reduce((sum, stream) => sum + (stream.viewers || 1), 0) : 0;
+            const totalViewers = baseViewers + (currentUser ? 1 : 0);
+            document.getElementById('onlineCount').textContent = `👁️ ${totalViewers} viewers`;
+        }
+
+        // Utility functions
+        function formatTime(date) {
+            return date.toLocaleTimeString('en-US', { 
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            
+            if (diffMins < 1) return 'just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            
+            const diffHours = Math.floor(diffMins / 60);
+            return `${diffHours}h ${diffMins % 60}m ago`;
+        }
+
+        // Firestore integration functions
+        async function syncToDatabase(streamData) {
+            try {
+                const docRef = await window.firebaseUtils.addDoc(
+                    window.firebaseUtils.collection(window.firebaseDB, 'streams'),
+                    {
+                        streamId: streamData.id,
+                        title: streamData.title,
+                        streamer: currentUser.displayName || currentUser.email,
+                        streamerUid: currentUser.uid,
+                        startTime: window.firebaseUtils.serverTimestamp(),
+                        viewers: 1,
+                        isLive: true,
+                        createdAt: window.firebaseUtils.serverTimestamp()
+                    }
+                );
+                
+                // Store the Firestore document ID
+                streamData.firestoreId = docRef.id;
+                console.log('Stream synced to Firestore:', docRef.id);
+                
+            } catch (error) {
+                console.error('Error syncing to Firestore:', error);
+                // Fallback to local storage
+                streamDatabase.set(streamData.id, streamData);
+            }
+        }
+
+        async function removeFromDatabase(streamId, firestoreId) {
+            try {
+                if (firestoreId) {
+                    await window.firebaseUtils.deleteDoc(
+                        window.firebaseUtils.doc(window.firebaseDB, 'streams', firestoreId)
+                    );
+                    console.log('Stream removed from Firestore:', firestoreId);
+                }
+            } catch (error) {
+                console.error('Error removing from Firestore:', error);
+            }
+            
+            // Also remove from local fallback
+            streamDatabase.delete(streamId);
+        }
+
+        function listenToStreams() {
+            // Listen to real-time updates from Firestore
+            const unsubscribe = window.firebaseUtils.onSnapshot(
+                window.firebaseUtils.collection(window.firebaseDB, 'streams'),
+                (snapshot) => {
+                    console.log('Firestore streams updated');
+                    
+                    // Update viewer counts and stream metadata
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        if (data.isLive) {
+                            // Update viewer count for existing streams
+                            const localStream = streams.get(data.streamId);
+                            if (localStream) {
+                                localStream.viewers = data.viewers || 1;
+                                localStream.firestoreId = doc.id;
+                            }
+                        }
+                    });
+                    
+                    updateStreamsDisplay();
+                },
+                (error) => {
+                    console.error('Error listening to streams:', error);
+                }
+            );
+            
+            // Store unsubscribe function for cleanup
+            window.streamsUnsubscribe = unsubscribe;
+        }
+
+        async function updateViewerCount(streamId = null) {
+            // Update viewer count in Firestore for specific stream
+            if (streamId && currentStream && currentStream.firestoreId) {
+                try {
+                    await window.firebaseUtils.updateDoc(
+                        window.firebaseUtils.doc(window.firebaseDB, 'streams', currentStream.firestoreId),
+                        {
+                            viewers: (currentStream.viewers || 1) + 1,
+                            lastUpdated: window.firebaseUtils.serverTimestamp()
+                        }
+                    );
+                } catch (error) {
+                    console.error('Error updating viewer count:', error);
+                }
+            }
+            
+            // Update UI counter
+            const baseViewers = streams.size > 0 ? Array.from(streams.values()).reduce((sum, stream) => sum + (stream.viewers || 1), 0) : 0;
+            const totalViewers = baseViewers + (currentUser ? 1 : 0);
+            document.getElementById('onlineCount').textContent = `👁️ ${totalViewers} viewers`;
+        }
+
+        // Modal event handlers
+        window.onclick = function(event) {
+            const loginModal = document.getElementById('loginModal');
+            const videoModal = document.getElementById('videoModal');
+            
+            if (event.target === loginModal) {
+                closeModal();
+            }
+            if (event.target === videoModal) {
+                closeVideoModal();
+            }
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeModal();
+                closeVideoModal();
+            }
+        });
+
+        // Handle Enter key in login inputs
+        document.getElementById('passwordInput').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                login();
+            }
+        });
+
+        // Simulate real-time updates (in real app, use Firestore real-time listeners)
+        setInterval(() => {
+            if (streams.size > 0) {
+                updateStreamsDisplay();
+            }
+        }, 30000); // Update every 30 seconds
+
+        // Initialize Firebase Authentication listener
+        window.firebaseUtils.onAuthStateChanged(window.firebaseAuth, (user) => {
+            if (user) {
+                currentUser = {
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: user.displayName || user.email.split('@')[0]
+                };
+                updateAuthUI();
+                listenToStreams();
+            } else {
+                currentUser = null;
+                updateAuthUI();
+                // Clean up listeners
+                if (window.streamsUnsubscribe) {
+                    window.streamsUnsubscribe();
+                }
+            }
+        });
+
+        // Initialize the app
+        updateAuthUI();
+        updateStreamsDisplay();
+    </script>
+</body>
+</html>
